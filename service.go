@@ -32,8 +32,9 @@ type SW struct {
 	UpdatedAt time.Time             `json:",omitempty"`
 	Replicas  int                   `json:",omitempty"`
 	Running   int                   `json:",omitempty"`
-	Version   int			`json:",omitempty"`
-	Changed   bool			`json:",omitempty"`
+	Version   int                   `json:",omitempty"`
+	Changed   bool                  `json:",omitempty"`
+	Mode      string                `json:",omitempty"`
 }
 
 type ServiceCreator interface {
@@ -67,6 +68,7 @@ func NewService(host string) *Service {
 }
 
 func (service *Service) GetServices() ([]SW, error) {
+
 	services, err := service.DockerClient.ServiceList(context.Background(), types.ServiceListOptions{})
 	nodes, err := service.DockerClient.NodeList(context.Background(), types.NodeListOptions{})
 	tasks, err := service.DockerClient.TaskList(context.Background(), types.TaskListOptions{})
@@ -93,14 +95,22 @@ func (service *Service) GetServices() ([]SW, error) {
 	new_services := []SW{}
 
 	for _, s := range services {
+		mode := ""
+		replicas := 1
+		if s.Spec.Mode.Replicated != nil && s.Spec.Mode.Replicated.Replicas != nil {
+			mode = "replicated"
+			replicas, _ = strconv.Atoi(fmt.Sprintf("%d", *s.Spec.Mode.Replicated.Replicas))
+		} else if s.Spec.Mode.Global != nil {
+			mode = "global"
+			replicas, _ = strconv.Atoi(fmt.Sprintf("%d", tasksNoShutdown[s.ID]))
+		}
 
-		replicas, _ := strconv.Atoi(fmt.Sprintf("%d", *s.Spec.Mode.Replicated.Replicas));
-		version, _:= strconv.Atoi(fmt.Sprintf("%d", s.Meta.Version.Index));
+		version, _ := strconv.Atoi(fmt.Sprintf("%d", s.Meta.Version.Index));
 		running_service := running[s.ID];
 
 		changed := false
 
-		if(service.Services[s.Spec.Name].Running != running_service) {
+		if (service.Services[s.Spec.Name].Running != running_service) {
 			changed = true
 		}
 
@@ -114,6 +124,7 @@ func (service *Service) GetServices() ([]SW, error) {
 			Running: running[s.ID],
 			Version: version,
 			Changed: changed,
+			Mode: mode,
 		}
 
 		if (running_service > 0) {
@@ -143,7 +154,7 @@ func (service *Service) GetNewServices(running_services []SW) ([]SW, error) {
 		_, ok := service.Services[item.Name]
 		if tmpCreatedAt.Nanosecond() == 0 || (item.CreatedAt.After(tmpCreatedAt) || ((item.Changed) && !ok) ) {
 			new_services = append(new_services, item)
-			debug("Added   : " + item.Name )
+			debug("Added   : " + item.Name)
 			service.Services[item.Name] = item
 			if service.ServiceLastCreatedAt.Before(item.CreatedAt) {
 				service.ServiceLastCreatedAt = item.CreatedAt
@@ -162,7 +173,7 @@ func (service *Service) GetRemovedServices(services []SW) []string {
 	}
 
 	for _, v := range services {
-		if (service.Services[v.Name].Replicas > 0)  {
+		if (service.Services[v.Name].Replicas > 0) {
 			delete(tmpMap, v.Name)
 		}
 	}
@@ -187,8 +198,6 @@ func (m *Service) UpdateTargetFile(services []SW, all []SW, template_file string
 
 	return nil
 }
-
-
 
 func (m *Service) RemoveService(removed_services []string, all []SW, template_file string, target_file string, cmd string) error {
 	for _, v := range removed_services {
