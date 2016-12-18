@@ -120,7 +120,6 @@ If you want to contribute to our project, please follow these guidelines:
 ToDo
 ------------
  * -cmd options multi command support
- * HealthCheck support
  
 Thank You
 ------------
