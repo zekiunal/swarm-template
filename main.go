@@ -10,7 +10,7 @@ var target_file string = "example/template.cfg"
 var interval int64 = 1
 var cmd string = "true"
 var version bool = false
-var buildVersion string = "0.1.a1.007"
+var buildVersion string = "0.1.001"
 
 func usage() {
 	println(`Usage: swarm-template [options]
