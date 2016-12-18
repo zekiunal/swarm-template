@@ -1,0 +1,26 @@
+{{ define "main" }}
+########################################################################################################################
+# List Backend Production UpStreams
+########################################################################################################################
+{{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "production") }}
+upstream {{$service_name}} {
+    server {{$service_name}}:9000 weight=100 max_fails=5000 fail_timeout=5;
+}{{ end }}{{ end }}{{ end }}
+
+
+########################################################################################################################
+# List Dev FPM Services
+########################################################################################################################
+{{$services := .}}
+{{ range group . }}{{$service_name:=.Name}}{{$dom := index .Labels "st.group"}}
+{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "production") }}
+server {
+    error_log    /nginx.log debug;
+    listen 80;
+    server_name {{$dom}};
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+}
+{{ end }}{{end}}{{end}}
+{{end}}
