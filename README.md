@@ -44,18 +44,291 @@ For more information, see https://github.com/zekiunal/swarm-template
 #### Run 
 
 ```shell
-$ swarm-template \
+$ ./swarm-template \
     -template_file="example/template.tmpl" \
     -target_file="example/target_file" \
     -cmd="/usr/sbin/nginx -s reload" \
 ```
 
-#### Templating Language
+### Example
+
+#### 1 - Create example services
+
+```shell
+docker service rm api-example-com_v1-000 api-example-com_v1-001 anotherapi-example-com_v1-0000 anotherapi-example-com_v1-0001 anotherapi-example-com_v1-0002 logs-example-com static-example-com www-example-com
+
+docker service create --name www-example-com --label st.tags="backend,development,public" --label st.version="1.000" --label st.group=www.example.com alpine ping docker.com
+
+docker service create --name static-example-com --label st.tags="static,development,public" --label st.version="1.000" --label st.group=static.example.com alpine ping docker.com   
+ 
+docker service create --name logs-example-com --label st.tags="backend,development,internal" --label st.version="1.000" --label st.group=logs.example.com alpine ping docker.com
+
+docker service create --name api-example-com_v1-000 --label st.tags="backend,development,public,internal,api" --label st.version="1.000" --label st.group=api.example.com  alpine ping docker.com
+                        
+docker service create --name api-example-com_v1-001 --label st.tags="backend,development,public,internal,api" --label st.version="1.001" --label st.group=api.example.com alpine ping docker.com
+ 
+docker service create --name anotherapi-example-com_v1-0000 --label st.tags="backend,development,public,internal,api" --label st.version="1.000" --label st.group=anotherapi.example.com alpine ping docker.com
+                        
+docker service create --name anotherapi-example-com_v1-0001 --label st.tags="backend,development,public,internal,api" --label st.version="1.001" --label st.group=anotherapi.example.com alpine ping docker.com
+
+docker service create --name anotherapi-example-com_v1-0002 --label st.tags="backend,development,public,internal,api" --label st.version="1.002" --label st.group=anotherapi.example.com alpine ping docker.com
+```
+
+#### 2 - Run swarm-template
+
+```shell
+go get -d -v -t && go build -v  && ./swarm-template -template_file="example/template.tmpl" -target_file="example/nginx.conf"
+```
+
+#### Results
+
+```shell
+# ./swarm-template -template_file="example/template.tmpl" -target_file="example/nginx.conf"
+_/zeki/swarm-template
+2016/12/20 12:20:47 Starting Swarm Template
+2016/12/20 12:20:47 Added   : api-example-com_v1-001
+2016/12/20 12:20:47 Added   : www-example-com
+2016/12/20 12:20:47 Added   : anotherapi-example-com_v1-0000
+2016/12/20 12:20:47 Added   : anotherapi-example-com_v1-0001
+2016/12/20 12:20:47 Added   : anotherapi-example-com_v1-0002
+2016/12/20 12:20:47 Added   : logs-example-com
+2016/12/20 12:20:47 Added   : api-example-com_v1-000
+2016/12/20 12:20:47 Added   : static-example-com
+
+```
+
+##### generated target file
+
+```
+########################################################################################################################
+# List Backend UpStreams
+########################################################################################################################
+upstream anotherapi-example-com_v1-0000 {
+    server anotherapi-example-com_v1-0000:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream api-example-com_v1-001 {
+    server api-example-com_v1-001:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream www-example-com {
+    server www-example-com:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream api-example-com_v1-000 {
+    server api-example-com_v1-000:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream logs-example-com {
+    server logs-example-com:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream anotherapi-example-com_v1-0001 {
+    server anotherapi-example-com_v1-0001:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+upstream anotherapi-example-com_v1-0002 {
+    server anotherapi-example-com_v1-0002:9000 weight=100 max_fails=5000 fail_timeout=5;
+}
+
+########################################################################################################################
+# List External Services
+########################################################################################################################
+server {
+    listen 80;
+    server_name anotherapi.example.com;
+    ..
+    ...
+
+    location @rewrite3 {
+        rewrite ^(/v1.000|/v1.001|/v1.002|)/(.*)$ $1/index.php?_url=/$2;
+    }
+    
+    location /v1.000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.000(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0000;
+            ..
+            ...
+            fastcgi_param VERSION v1.000;
+        }
+    }
+    location /v1.001 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.001(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0000;
+            ..
+            ...
+            fastcgi_param VERSION v1.001;
+        }
+    }
+    location /v1.002 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.002(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0000;
+            ..
+            ...
+            fastcgi_param VERSION v1.002;
+        }
+    }
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+    ..
+    ...
+
+    location @rewrite3 {
+        rewrite ^(/v1.001|/v1.000|)/(.*)$ $1/index.php?_url=/$2;
+    }
+    
+    location /v1.001 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.001(.+\.php)$ {
+            fastcgi_pass api-example-com_v1-001;
+            ..
+            ...
+            fastcgi_param VERSION v1.001;
+        }
+    }
+    location /v1.000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.000(.+\.php)$ {
+            fastcgi_pass api-example-com_v1-001;
+            ..
+            ...
+            fastcgi_param VERSION v1.000;
+        }
+    }
+}
+
+server {
+    listen 80;
+    server_name www.example.com;
+    ..
+    ...
+
+    location @rewrite3 {
+        rewrite ^(/v1.000|)/(.*)$ $1/index.php?_url=/$2;
+    }
+    
+    location /v1.000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.000(.+\.php)$ {
+            fastcgi_pass www-example-com;
+            ..
+            ...
+            fastcgi_param VERSION v1.000;
+        }
+    }
+}
+
+server {
+    listen 80;
+    server_name logs.example.com;
+    ..
+    ...
+
+    location @rewrite3 {
+        rewrite ^(/v1.000|)/(.*)$ $1/index.php?_url=/$2;
+    }
+    
+    location /v1.000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v1.000(.+\.php)$ {
+            fastcgi_pass logs-example-com;
+            ..
+            ...
+            fastcgi_param VERSION v1.000;
+        }
+    }
+}
+########################################################################################################################
+# List Internal Setup
+########################################################################################################################
+server {
+    listen       80  default_server;
+    server_name  _;
+    ..
+    ...
+
+    location @rewrite2 {
+        rewrite ^(/anotherapi-example-com/v1.0000|/api-example-com/v1.001|/api-example-com/v1.000|/logs-example-com|/anotherapi-example-com/v1.0001|/anotherapi-example-com/v1.0002|)/(.*)$ $1/index.php?_url=/$2;
+    }
+    
+    location /anotherapi-example-com/v1.0000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/anotherapi-example-com/v1.0000(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0000;
+            ..
+            ...
+            fastcgi_param VERSION v1.0000;
+        }
+    }
+    location /api-example-com/v1.001 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/api-example-com/v1.001(.+\.php)$ {
+            fastcgi_pass api-example-com_v1-001;
+            ..
+            ...
+            fastcgi_param VERSION v1.001;
+        }
+    }
+    location /api-example-com/v1.000 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/api-example-com/v1.000(.+\.php)$ {
+            fastcgi_pass api-example-com_v1-000;
+            ..
+            ...
+            fastcgi_param VERSION v1.000;
+        }
+    }
+    location /logs-example-com {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/logs-example-com(.+\.php)$ {
+            fastcgi_pass logs-example-com;
+            ..
+            ...
+            fastcgi_param VERSION ;
+        }
+    }
+    location /anotherapi-example-com/v1.0001 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/anotherapi-example-com/v1.0001(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0001;
+            ..
+            ...
+            fastcgi_param VERSION v1.0001;
+        }
+    }
+    location /anotherapi-example-com/v1.0002 {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^/anotherapi-example-com/v1.0002(.+\.php)$ {
+            fastcgi_pass anotherapi-example-com_v1-0002;
+            ..
+            ...
+            fastcgi_param VERSION v1.0002;
+        }
+    }
+}
+
+```
+
+### Templating Language
+
 Swarm Template consumes template files in the [Go Template][] format.
 
-##### Additional Functions
+#### Additional Functions
 
-###### `group`
+##### `group`
 Query Swarm API for all services in the group by "st.group" label. Services are queried using the following syntax:
 
 ```liquid
@@ -64,7 +337,7 @@ Query Swarm API for all services in the group by "st.group" label. Services are 
 {{ end}}
 ```
 
-###### `KeyBy`
+##### `KeyBy`
 
 Creates a map that groups services by tag
 
@@ -76,7 +349,7 @@ Creates a map that groups services by tag
 {{end}}
 ```
 
-###### `contains`
+##### `contains`
 Determines if a needle is within an iterable element.
 
 ```liquid
