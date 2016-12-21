@@ -97,6 +97,70 @@ _/zeki/swarm-template
 
 ```
 
+##### template file
+
+```
+{{ define "main" }}
+########################################################################################################################
+# List Backend UpStreams
+########################################################################################################################
+{{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "development") }}
+upstream {{$service_name}} {
+    server {{$service_name}}:9000 weight=100 max_fails=5000 fail_timeout=5;
+}{{ end }}{{ end }}{{ end }}
+
+########################################################################################################################
+# List External Services
+########################################################################################################################
+{{$services := .}}{{ range group . }}{{$service_name:=.Name}}{{$domain := index .Labels "st.group"}}{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "development") }}
+server {
+    listen 80;
+    server_name {{$domain}};
+    ..
+    ...
+
+    location @rewrite3 {
+        rewrite ^({{ range keyBy $services $domain}}/v{{index .Labels "st.version"}}|{{end}})/(.*)$ $1/index.php?_url=/$2;
+    }
+    {{ range keyBy $services $domain}}{{$version := index .Labels "st.version"}}
+    location /v{{$version}} {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v{{$version}}(.+\.php)$ {
+            fastcgi_pass {{$service_name}};
+            ..
+            ...
+            fastcgi_param VERSION v{{$version}};
+        }
+    }{{end}}
+}{{ end }}{{end}}{{end}}
+########################################################################################################################
+# List Internal Setup
+########################################################################################################################
+server {
+    listen       80  default_server;
+    server_name  _;
+    ..
+    ...
+
+    location @rewrite2 {
+        rewrite ^({{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "development") ( . | contains "backend") ( . | contains "internal") }}{{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}}|{{end}}{{end}}{{end}})/(.*)$ $1/index.php?_url=/$2;
+    }
+    {{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "development") ( . | contains "backend") ( . | contains "internal") }}{{$service_parse := $service_name | split "_"}}
+    location {{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}} {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite2;
+        location ~ ^{{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}}(.+\.php)$ {
+            fastcgi_pass {{$service_name}};
+            ..
+            ...
+            fastcgi_param VERSION {{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}{{$value_v}}{{end}}{{end}};
+        }
+    }{{end}}{{end}}{{end}}
+}
+{{end}}
+```
+
 ##### generated target file
 
 ```
