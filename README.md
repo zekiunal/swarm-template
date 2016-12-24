@@ -450,6 +450,12 @@ Splits the given string on the provided separator:
 Contributing
 ------------
 
+### Build 
+
+```
+docker run --rm --name go-build -v "$PWD":"/go/src/swarm-template" -w "/go/src/swarm-template"  golang sh -c " go get; go build -v"
+```
+
 If you want to contribute to our project, please follow these guidelines:
 
 1. Fork the repo
