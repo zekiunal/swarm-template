@@ -47,7 +47,7 @@ For more information, see https://github.com/zekiunal/swarm-template
 
 ```shell
 $ ./swarm-template \
-    -host="tcp:0.0.0.0:2375"
+    -host="tcp://0.0.0.0:2375"
     -template_file="example/template.tmpl" \
     -target_file="example/target_file" \
     -cmd="/usr/sbin/nginx -s reload" \
