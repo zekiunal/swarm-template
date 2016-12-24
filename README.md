@@ -470,6 +470,6 @@ ToDo
 Thank You
 ------------
  
- * [AzMesai](http://azmesai.net/) Group Memebers
+ * [AzMesai](http://azmesai.net/) Group Members
  
  
