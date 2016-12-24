@@ -45,10 +45,8 @@ type ServiceCreator interface {
 
 var debug = log.Println
 
-func NewServiceFromEnv() *Service {
-
-	host := "unix:///var/run/docker.sock"
-
+func NewServiceFromEnv(host string) *Service {
+	debug(host)
 	return NewService(host)
 }
 

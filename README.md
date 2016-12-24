@@ -29,6 +29,8 @@ Generate files from docker swarm api
 Options:
   -cmd restart xyz
         run command after template is regenerated (e.g restart xyz) (default "true")
+  -host string
+        swarm manager address. (default "unix:///var/run/docker.sock")
   -interval int
         notify command interval (secs) (default 1)
   -target_file string
@@ -45,6 +47,7 @@ For more information, see https://github.com/zekiunal/swarm-template
 
 ```shell
 $ ./swarm-template \
+    -host="tcp:0.0.0.0:2375"
     -template_file="example/template.tmpl" \
     -target_file="example/target_file" \
     -cmd="/usr/sbin/nginx -s reload" \
