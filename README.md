@@ -395,6 +395,14 @@ Swarm Template consumes template files in the [Go Template][] format.
 
 #### Additional Functions
 
+##### `env`
+
+Wrapper for os.Getenv. Retrieves the value of the environment variable named by the key. It returns the value, which will be empty if the variable is not present. Optionally, you can give a default value that will be returned if the key is not present.
+
+```liquid
+{{env "HOSTNAME" "127.0.0.1"}}
+```
+
 ##### `group`
 Query Swarm API for all services in the group by "st.group" label. Services are queried using the following syntax:
 

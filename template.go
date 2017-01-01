@@ -4,6 +4,7 @@ import (
 	"text/template"
 	"strings"
 	"reflect"
+	"os"
 )
 
 var funcMap = template.FuncMap{
@@ -12,8 +13,25 @@ var funcMap = template.FuncMap{
 	"split":  split,
 	"group":  group,
 	"keyBy":  keyBy,
+	"env": getEnv,
 }
 
+// https://github.com/kelseyhightower/confd/blob/master/resource/template/template_funcs.go#L45
+// Getenv retrieves the value of the environment variable named by the key.
+// It returns the value, which will the default value if the variable is not present.
+// If no default value was given - returns "".
+func getEnv(key string, v ...string) string {
+	defaultValue := ""
+	if len(v) > 0 {
+		defaultValue = v[0]
+	}
+
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
 
 func replaceAll(f, t, s string) (string, error) {
 	return strings.Replace(s, f, t, -1), nil
