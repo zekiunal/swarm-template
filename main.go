@@ -10,8 +10,8 @@ var target_file string = "example/template.cfg"
 var interval int64 = 1
 var cmd string = "true"
 var version bool = false
-var buildVersion string = "0.1.002"
-// tcp://172.31.21.35:2375
+var buildVersion string = "0.1.003"
+// tcp://127.0.0.1:2375
 var host string = "unix:///var/run/docker.sock"
 
 func usage() {
