@@ -1,16 +1,17 @@
 package main
 
 import (
-	"time"
 	"flag"
+	"time"
 )
 
-var template_file string = "example/template.tmpl"
-var target_file string = "example/template.cfg"
+var template_file 	string = "example/template.tmpl"
+var target_file 	string = "example/template.cfg"
+var cmd 		string = "true"
 var interval int64 = 1
-var cmd string = "true"
 var version bool = false
-var buildVersion string = "0.1.003"
+var buildVersion string = "0.2.001"
+
 // tcp://127.0.0.1:2375
 var host string = "unix:///var/run/docker.sock"
 
@@ -46,7 +47,7 @@ func main() {
 	service := NewServiceFromEnv(*host)
 
 	for {
-		services, _ := service.GetServices()
+		services, _ := service.GetServices();
 
 		new_services, _ := service.GetNewServices(services)
 		if len(new_services) > 0 {
@@ -60,4 +61,5 @@ func main() {
 
 		time.Sleep(time.Second * time.Duration(*interval))
 	}
+
 }

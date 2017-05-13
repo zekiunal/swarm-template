@@ -12,7 +12,9 @@ var funcMap = template.FuncMap{
 	"replaceAll":  replaceAll,
 	"split":  split,
 	"group":  group,
+	"groups":  groups,
 	"keyBy":  keyBy,
+	"domainBy": domainBy,
 	"env": getEnv,
 }
 
@@ -37,8 +39,9 @@ func replaceAll(f, t, s string) (string, error) {
 	return strings.Replace(s, f, t, -1), nil
 }
 
-func contains(v, l interface{}) (bool, error) {
-	return in(l, v)
+func contains(v, l string) (bool, error) {
+	m, _ := split(",", l);
+	return in(m, v)
 }
 
 func in(l, v interface{}) (bool, error) {
@@ -112,6 +115,18 @@ func group(value []SW) []SW {
 	return groups
 }
 
+func groups(services []SwarmService) []SwarmService {
+	groups := []SwarmService{}
+	seen := map[string]SwarmService{}
+	for _, service := range services {
+		if _, ok := seen[service.Domain]; !ok {
+			groups = append(groups, service)
+			seen[service.Domain] = service
+		}
+	}
+	return groups
+}
+
 func keyBy(value []SW, key string) []SW {
 	groups := []SW{}
 	for _, s := range value {
@@ -121,7 +136,15 @@ func keyBy(value []SW, key string) []SW {
 			}
 		}
 	}
+	return groups
+}
 
-
+func domainBy(value []SwarmService, key string) []SwarmService {
+	groups := []SwarmService{}
+	for _, s := range value {
+		if (s.Domain == key) {
+			groups = append(groups, s)
+		}
+	}
 	return groups
 }
