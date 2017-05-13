@@ -35,13 +35,13 @@ func main() {
 	interval := flag.Int64("interval", interval, "notify command interval (secs)")
 	flag.BoolVar(&version, "version", false, "show version")
 
+	flag.Usage = usage
+	flag.Parse()
+
 	if version {
 		println("version : v" + buildVersion)
 		return
 	}
-
-	flag.Usage = usage
-	flag.Parse()
 
 	debug("Starting Swarm Template")
 	service := NewServiceFromEnv(*host)
