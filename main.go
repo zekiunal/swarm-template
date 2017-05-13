@@ -20,6 +20,7 @@ func usage() {
 Generate files from docker swarm api
 
 Options:`)
+
 	flag.PrintDefaults()
 
 	println(`For more information, see https://github.com/zekiunal/swarm-template`)
