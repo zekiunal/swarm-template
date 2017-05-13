@@ -35,6 +35,17 @@ type SW struct {
 	Version   int                   `json:",omitempty"`
 	Changed   bool                  `json:",omitempty"`
 	Mode      string                `json:",omitempty"`
+	SW        SwarmService        `json:",omitempty"`
+}
+
+type SwarmService struct {
+	Name            string                `json:",omitempty"`
+	Domain          string                `json:",omitempty"`
+	Tags            string                `json:",omitempty"`
+	Version         string                `json:",omitempty"`
+	Port            string                `json:",omitempty"`
+	SSL_Key         string                `json:",omitempty"`
+	SSL_Certificate string                `json:",omitempty"`
 }
 
 type ServiceCreator interface {
@@ -72,6 +83,7 @@ func (service *Service) GetServices() ([]SW, error) {
 	tasks, err := service.DockerClient.TaskList(context.Background(), types.TaskListOptions{})
 
 	activeNodes := make(map[string]struct{})
+
 	for _, n := range nodes {
 		if n.Status.State != swarm.NodeStateDown {
 			activeNodes[n.ID] = struct{}{}
@@ -93,43 +105,74 @@ func (service *Service) GetServices() ([]SW, error) {
 	new_services := []SW{}
 
 	for _, s := range services {
-		mode := ""
-		replicas := 1
-		if s.Spec.Mode.Replicated != nil && s.Spec.Mode.Replicated.Replicas != nil {
-			mode = "replicated"
-			replicas, _ = strconv.Atoi(fmt.Sprintf("%d", *s.Spec.Mode.Replicated.Replicas))
-		} else if s.Spec.Mode.Global != nil {
-			mode = "global"
-			replicas, _ = strconv.Atoi(fmt.Sprintf("%d", tasksNoShutdown[s.ID]))
-		}
 
-		version, _ := strconv.Atoi(fmt.Sprintf("%d", s.Meta.Version.Index));
-		running_service := running[s.ID];
+		if _, ok := s.Spec.Labels["st.domain"]; ok {
 
-		changed := false
+			mode := ""
+			replicas := 1
+			if s.Spec.Mode.Replicated != nil && s.Spec.Mode.Replicated.Replicas != nil {
+				mode = "replicated"
+				replicas, _ = strconv.Atoi(fmt.Sprintf("%d", *s.Spec.Mode.Replicated.Replicas))
+			} else if s.Spec.Mode.Global != nil {
+				mode = "global"
+				replicas, _ = strconv.Atoi(fmt.Sprintf("%d", tasksNoShutdown[s.ID]))
+			}
 
-		if (service.Services[s.Spec.Name].Running != running_service) {
-			changed = true
-		}
+			version, _ := strconv.Atoi(fmt.Sprintf("%d", s.Meta.Version.Index));
+			running_service := running[s.ID];
 
-		k := SW{
-			ID: s.ID,
-			Name: s.Spec.Name,
-			Labels: s.Spec.Labels,
-			CreatedAt: s.Meta.CreatedAt,
-			UpdatedAt: s.Meta.UpdatedAt,
-			Replicas: replicas,
-			Running: running[s.ID],
-			Version: version,
-			Changed: changed,
-			Mode: mode,
-		}
+			changed := false
 
-		if (running_service > 0) {
-			new_services = append(new_services, k)
+			if (service.Services[s.Spec.Name].Running != running_service) {
+				changed = true
+			}
+
+			//fmt.Printf("%+v\n", s.Spec.Labels);
+
+			if (s.Spec.Labels["st.ssl_cert"] != "" && s.Spec.Labels["st.ssl_key"] != "") {
+				if _, ok := s.Spec.Labels["st.tags"]; ok {
+					s.Spec.Labels["st.tags"] = s.Spec.Labels["st.tags"] + ",ssl"
+				} else {
+					s.Spec.Labels["st.tags"] = "ssl";
+				}
+				//fmt.Printf("%+v\n", s.Spec.Labels)
+			}
+
+			swarm_service := SwarmService{
+				Name: s.Spec.Name,
+				Domain: s.Spec.Labels["st.domain"],
+				Tags: s.Spec.Labels["st.tags"],
+				Version: s.Spec.Labels["st.version"],
+				Port: s.Spec.Labels["st.port"],
+				SSL_Certificate: s.Spec.Labels["st.ssl_cert"],
+				SSL_Key: s.Spec.Labels["st.ssl_key"],
+			}
+
+
+
+			k := SW{
+				ID: s.ID,
+				Name: s.Spec.Name,
+				Labels: s.Spec.Labels,
+				CreatedAt: s.Meta.CreatedAt,
+				UpdatedAt: s.Meta.UpdatedAt,
+				Replicas: replicas,
+				Running: running[s.ID],
+				Version: version,
+				Changed: changed,
+				Mode: mode,
+				SW: swarm_service,
+			}
+
+			if (running_service > 0) {
+				new_services = append(new_services, k)
+			}
 		}
 
 	}
+
+	//fmt.Printf("%+v\n", new_services);
+
 
 	if err != nil {
 		debug(err.Error())
@@ -184,11 +227,19 @@ func (service *Service) GetRemovedServices(services []SW) []string {
 }
 
 func (m *Service) UpdateTargetFile(services []SW, all []SW, template_file string, target_file string, cmd string) error {
+
 	if len(services) > 0 {
+
+		sw := []SwarmService{}
+
+		for _, item := range all {
+			sw = append(sw, item.SW)
+		}
+
 		f, _ := os.Create(target_file)
 		t := template.New("template").Funcs(funcMap)
 		t, _ = t.ParseFiles(template_file)
-		t.ExecuteTemplate(f, "main", &all)
+		t.ExecuteTemplate(f, "main", sw)
 		f.Close()
 
 		executeCMD(cmd)
@@ -203,10 +254,16 @@ func (m *Service) RemoveService(removed_services []string, all []SW, template_fi
 		debug("Removed : " + v)
 	}
 
+	sw := []SwarmService{}
+
+	for _, item := range all {
+		sw = append(sw, item.SW)
+	}
+
 	f, _ := os.Create(target_file)
 	t := template.New("template").Funcs(funcMap)
 	t, _ = t.ParseFiles(template_file)
-	t.ExecuteTemplate(f, "main", &all)
+	t.ExecuteTemplate(f, "main", sw)
 	f.Close()
 
 	executeCMD(cmd)

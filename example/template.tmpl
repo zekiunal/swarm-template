@@ -1,62 +1,419 @@
 {{ define "main" }}
-
-{{$user := env "USER"}}
-#  {{$user}}
 ########################################################################################################################
-# List Backend UpStreams
+# Nginx Configuration
 ########################################################################################################################
-{{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "development") }}
-upstream {{$service_name}} {
-    server {{$service_name}}:9000 weight=100 max_fails=5000 fail_timeout=5;
-}{{ end }}{{ end }}{{ end }}
-
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+proxy_buffer_size   128k;
+proxy_buffers   4 256k;
+proxy_busy_buffers_size   256k;
 ########################################################################################################################
-# List External Services
+# List System UpStreams
 ########################################################################################################################
-{{$services := .}}{{ range group . }}{{$service_name:=.Name}}{{$domain := index .Labels "st.group"}}{{ range $label := .Labels }}{{ if and ( . | contains "backend") ( . | contains "development") }}
+{{ range $service := . }}{{ if and ( .Tags | contains "backend") ( .Tags | contains "system") }}
+upstream {{.Name}} {
+    server {{.Name}}{{if .Port}}:{{.Port}}{{else}}:9000{{end}} weight=100 max_fails=5000 fail_timeout=5;
+}{{ end }}{{end}}
+########################################################################################################################
+# List Customer UpStreams
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "backend") ( .Tags | contains "customer") }}
+upstream {{.Name}} {
+    server {{.Name}}{{if .Port}}:{{.Port}}{{else}}:9000{{end}} weight=100 max_fails=5000 fail_timeout=5;
+}{{ end }}{{end}}
+########################################################################################################################
+# List System FPM Services
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "backend") ( .Tags | contains "system") ( .Tags | contains "public") }}
 server {
     listen 80;
-    server_name {{$domain}};
-    ..
-    ...
+    server_name {{.Domain}};
 
-    location @rewrite3 {
-        rewrite ^({{ range keyBy $services $domain}}/v{{index .Labels "st.version"}}|{{end}})/(.*)$ $1/index.php?_url=/$2;
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    {{ if and ( .Tags | contains "ssl")  }}
+    if ($ssl_protocol = "") {
+        #return 301 https://$server_name$request_uri;
+    }{{ end }}
+
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+
+    location / {
+        try_files $uri $uri/ /index.php?_url=$uri&$args;
     }
-    {{ range keyBy $services $domain}}{{$version := index .Labels "st.version"}}
-    location /v{{$version}} {
-        root /www/http/public/;
-        try_files $uri $uri/ @rewrite3;
-        location ~ ^/v{{$version}}(.+\.php)$ {
-            fastcgi_pass {{$service_name}};
-            ..
-            ...
-            fastcgi_param VERSION v{{$version}};
-        }
-    }{{end}}
-}{{ end }}{{end}}{{end}}
+
+    location ~ \.php$ {
+        fastcgi_pass {{.Name}};
+        fastcgi_index /index.php;
+        include fastcgi_params;
+        fastcgi_split_path_info       ^(.+\.php)(/.+)$;
+        fastcgi_param PATH_INFO       $fastcgi_path_info;
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param APPLICATION_ENV production;
+        fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+        newrelic.labels=Service:Monapi;Scope:System";
+        fastcgi_read_timeout 600;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+    }
+
+}{{ end }}{{ if and ( .Tags | contains "backend") ( .Tags | contains "system") ( .Tags | contains "public") ( .Tags | contains "ssl") }}
+server {
+    listen 443 ssl;
+    ssl_certificate /certs/live/{{.Domain}}/fullchain.pem;
+    ssl_certificate_key /certs/live/{{.Domain}}/privkey.pem;
+    server_name {{.Domain}};
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?_url=$uri&$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass {{.Name}};
+        fastcgi_index /index.php;
+        include fastcgi_params;
+        fastcgi_split_path_info       ^(.+\.php)(/.+)$;
+        fastcgi_param PATH_INFO       $fastcgi_path_info;
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param APPLICATION_ENV production;
+        fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+        newrelic.labels=Service:Monapi;Scope:System";
+        fastcgi_read_timeout 600;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+    }
+
+}{{ end }}{{ end }}
 ########################################################################################################################
-# List Internal Setup
+# List System and Customer FPM Internal Setup Services
 ########################################################################################################################
 server {
     listen       80  default_server;
     server_name  _;
-    ..
-    ...
+    set         $root_path '/www/http/public';
+    root        $root_path;
 
-    location @rewrite2 {
-        rewrite ^({{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "development") ( . | contains "backend") ( . | contains "internal") }}{{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}}|{{end}}{{end}}{{end}})/(.*)$ $1/index.php?_url=/$2;
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    include /etc/nginx/common.conf;
+    index index.php index.html index.htm;
+
+    ####################################################################################################################
+    # List System FPM Internal Setup Services
+    ####################################################################################################################
+    location @rewrite_system {
+        rewrite ^({{ range $service := . }}{{ if and ( .Tags | contains "system") ( .Tags | contains "backend") ( .Tags | contains "internal") }}/{{.Domain}}|{{end}}{{end}}/(.*)$ $1/index.php?_url=/$2;
     }
-    {{ range $service := . }}{{$service_name:=.Name}}{{ range $label := .Labels }}{{ if and ( . | contains "development") ( . | contains "backend") ( . | contains "internal") }}{{$service_parse := $service_name | split "_"}}
-    location {{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}} {
+    {{ range $service := . }}{{ if and ( .Tags | contains "system") ( .Tags | contains "backend") ( .Tags | contains "internal") }}
+    location /{{.Domain}} {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite_system;
+
+        location ~ ^/{{.Domain}}(.+\.php)$ {
+                    fastcgi_pass {{.Name}};
+                    fastcgi_index /index.php;
+                    include fastcgi_params;
+                    fastcgi_param PATH_TRANSLATED /www/http/public$1$fastcgi_path_info;
+                    fastcgi_param SCRIPT_FILENAME /www/http/public$1;
+                    fastcgi_param APPLICATION_ENV production;
+                    fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:System";
+                    fastcgi_read_timeout 600;
+                    fastcgi_buffer_size 128k;
+                    fastcgi_buffers 4 256k;
+                    fastcgi_busy_buffers_size 256k;
+         }
+    }{{end}}{{end}}
+    ####################################################################################################################
+    # List Customer FPM Internal Setup Services
+    # rewrite ^(/api-system-stage-domain-com/v1.0.0|)/(.*)$ $1/index.php?_url=/$2;
+    ####################################################################################################################
+    location @rewrite2 {
+        rewrite ^({{ range $service := . }}{{ if and ( .Tags | contains "customer") ( .Tags | contains "backend") ( .Tags | contains "internal") }}/{{.Name}}/v{{.Version}}|{{end}}{{end}})/(.*)$ $1/index.php?_url=/$2;
+    }
+    {{ range $service := . }}{{ if and ( .Tags | contains "customer") ( .Tags | contains "backend") ( .Tags | contains "internal") }}
+    location /{{.Name}}/v{{.Version}} {
         root /www/http/public/;
         try_files $uri $uri/ @rewrite2;
-        location ~ ^{{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}/{{$value_v}}{{else}}/{{$value}}{{end}}{{end}}(.+\.php)$ {
-            fastcgi_pass {{$service_name}};
-            ..
-            ...
-            fastcgi_param VERSION {{$service_parse := $service_name | split "_"}}{{range $key, $value := $service_parse}}{{if eq $key 1}}{{$value_v := $value | replaceAll "-" "."}}{{$value_v}}{{end}}{{end}};
+        location ~ ^/{{.Name}}/v{{.Version}}(.+\.php)$ {
+            fastcgi_pass {{.Name}};
+            fastcgi_index /index.php;
+            include fastcgi_params;
+            fastcgi_param PATH_TRANSLATED /www/http/public$1$fastcgi_path_info;
+            fastcgi_param SCRIPT_FILENAME /www/http/public$1;
+            fastcgi_param APPLICATION_ENV production;
+            fastcgi_param VERSION v{{.Version}};
+            fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:Customer;Version:v{{.Version}}";
+            fastcgi_buffer_size 128k;
+            fastcgi_buffers 4 256k;
+            fastcgi_busy_buffers_size 256k;
         }
-    }{{end}}{{end}}{{end}}
+    }{{end}}{{end}}
 }
+########################################################################################################################
+# List System Static Services
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "system") ( .Tags | contains "static") }}
+upstream {{.Name}} {
+    server {{.Name}} weight=100 max_fails=5000 fail_timeout=5;
+}
+server {
+    listen 80;
+    server_name {{.Domain}};
+
+    access_log  syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    set         $root_path '/www/http/public';
+    root        $root_path;
+
+    include /etc/nginx/common.conf;
+
+    location / {
+        proxy_pass http://{{.Name}};
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}{{ end }}{{ end }}
+########################################################################################################################
+# List System Socket Services
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "system") ( .Tags | contains "socket") }}
+upstream {{.Name}} {
+    server {{.Name}}:8080 fail_timeout=20s;
+}
+server {
+    listen 80;
+    server_name {{.Domain}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    location / {
+        proxy_pass http://{{.Name}};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade websocket;
+        proxy_set_header Connection upgrade;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}{{ end }}{{ end }}
+########################################################################################################################
+# List System SSL Socket Services
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "system") ( .Tags | contains "socket") ( .Tags | contains "ssl") }}
+server {
+    listen 443 ssl;
+    server_name {{.Domain}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    ssl_certificate {{.SSL_Certificate}};
+    ssl_certificate_key {{.SSL_Key}};
+
+    location / {
+        proxy_pass http://{{.Name}};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade websocket;
+        proxy_set_header Connection upgrade;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}{{ end }}{{ end }}
+########################################################################################################################
+# List Customer FPM Services
+########################################################################################################################
+{{$services := .}}{{ range groups $services }} {{ if and ( .Tags | contains "backend") ( .Tags | contains "customer") ( .Tags | contains "api") }}
+server {
+    listen 80;
+    server_name {{.Domain}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+    {{ if eq .Domain "api.system.monapi.com" }}
+    if ($ssl_protocol = "") {
+        #return 301 https://$server_name$request_uri;
+    }{{ end }}
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+    location @rewrite3 {
+            rewrite ^({{ range domainBy $services .Domain }}/v{{.Version}}|{{end}})/(.*)$ $1/index.php?_url=/$2;
+    }
+    {{ range domainBy $services .Domain }}
+    location /v{{.Version}} {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v{{.Version}}(.+\.php)$ {
+            fastcgi_pass {{.Name}};
+            fastcgi_index /index.php;
+            include fastcgi_params;
+            fastcgi_param PATH_TRANSLATED /www/http/public$1$fastcgi_path_info;
+            fastcgi_param SCRIPT_FILENAME /www/http/public$1;
+            fastcgi_param APPLICATION_ENV production;
+            fastcgi_param VERSION v{{.Version}};
+            fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:Customer;Version:v{{.Version}}";
+            fastcgi_buffer_size 128k;
+            fastcgi_buffers 4 256k;
+            fastcgi_busy_buffers_size 256k;
+        }
+    }{{end}}
+}{{ if and ( .Tags | contains "backend") ( .Tags | contains "customer") ( .Tags | contains "api") ( .Tags | contains "ssl")  }}
+server {
+    listen 443 ssl;
+    server_name {{.Domain}};
+
+    ssl_certificate {{.SSL_Certificate}};
+    ssl_certificate_key {{.SSL_Key}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+
+    location @rewrite3 {
+            rewrite ^({{ range domainBy $services .Domain }}/v{{.Version}}|{{end}})/(.*)$ $1/index.php?_url=/$2;
+    }
+    {{ range domainBy $services .Domain }}
+    location /v{{.Version}} {
+        root /www/http/public/;
+        try_files $uri $uri/ @rewrite3;
+        location ~ ^/v{{.Version}}(.+\.php)$ {
+            fastcgi_pass {{.Name}};
+            fastcgi_index /index.php;
+            include fastcgi_params;
+            fastcgi_param PATH_TRANSLATED /www/http/public$1$fastcgi_path_info;
+            fastcgi_param SCRIPT_FILENAME /www/http/public$1;
+            fastcgi_param APPLICATION_ENV production;
+            fastcgi_param VERSION v{{.Version}};
+            fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:Customer;Version:v{{.Version}}";
+            fastcgi_buffer_size 128k;
+            fastcgi_buffers 4 256k;
+            fastcgi_busy_buffers_size 256k;
+        }
+    }{{end}}
+}{{end}}{{ end }}{{end}}
+########################################################################################################################
+# List Customer Portal FPM Services
+########################################################################################################################
+{{ range $service := . }}{{ if and ( .Tags | contains "public") ( .Tags | contains "customer") ( .Tags | contains "portal") }}
+server {
+    listen 80;
+    server_name {{.Domain}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    {{ if eq .Domain "system.monapi.com" }}
+        if ($ssl_protocol = "") {
+            #return 301 https://$server_name$request_uri;
+        }
+    {{ end }}
+
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+
+    location / {
+        try_files $uri $uri/ /index.php?_url=$uri&$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass {{.Name}};
+        fastcgi_index /index.php;
+        include fastcgi_params;
+        fastcgi_split_path_info       ^(.+\.php)(/.+)$;
+        fastcgi_param PATH_INFO       $fastcgi_path_info;
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param APPLICATION_ENV production;
+        fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:Customer";
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+    }
+}
+server {
+    listen 80;
+    server_name doc.{{.Domain}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    location / {
+        proxy_pass http://documentation.monapi.com.s3-website.eu-central-1.amazonaws.com/customer/documentation.{{.Domain}}/;
+    }
+}{{ end }}{{ end }}
+{{ range $service := . }}{{ if and ( .Tag | contains "public") ( .Tag | contains "customer") ( .Tag | contains "portal") ( .Tag | contains "ssl") }}
+server {
+    listen 443 ssl;
+    server_name {{.Domain}};
+
+    ssl_certificate {{.SSL_Certificate}};
+    ssl_certificate_key {{.SSL_Key}};
+
+    access_log syslog:server=syslog:5514,tag=nginx,facility=local7,severity=debug combined;
+    #error_log  syslog:server=syslog:5514 debug;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    set         $root_path '/www/http/public';
+    root        $root_path;
+    include /etc/nginx/common.conf;
+
+    location / {
+        try_files $uri $uri/ /index.php?_url=$uri&$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass {{.Name}};
+        fastcgi_index /index.php;
+        include fastcgi_params;
+        fastcgi_split_path_info       ^(.+\.php)(/.+)$;
+        fastcgi_param PATH_INFO       $fastcgi_path_info;
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param APPLICATION_ENV production;
+        fastcgi_param PHP_VALUE "newrelic.appname={{.Name}} \n
+newrelic.labels=Service:Monapi;Scope:Customer";
+        fastcgi_read_timeout 600;
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+    }
+}{{ end }}{{ end }}
+
 {{end}}
