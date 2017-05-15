@@ -10,7 +10,7 @@ var target_file 	string = "example/template.cfg"
 var cmd 		string = "true"
 var interval int64 = 1
 var version bool = false
-var buildVersion string = "0.2.002"
+var buildVersion string = "0.2.003"
 
 // tcp://127.0.0.1:2375
 var host string = "unix:///var/run/docker.sock"

@@ -40,7 +40,7 @@ type SW struct {
 
 type SwarmService struct {
 	Name            string                `json:",omitempty"`
-	Address         string                `json:",omitempty"`
+	ServiceNam      string                `json:",omitempty"`
 	Domain          string                `json:",omitempty"`
 	Tags            string                `json:",omitempty"`
 	Version         string                `json:",omitempty"`
@@ -140,8 +140,8 @@ func (service *Service) GetServices() ([]SW, error) {
 			}
 
 			swarm_service := SwarmService{
-				Name: s.Spec.Name,
-				Address: s.Spec.Labels["st.address"],
+				ServiceName: s.Spec.Name,
+				Name: s.Spec.Labels["st.name"],
 				Domain: s.Spec.Labels["st.domain"],
 				Tags: s.Spec.Labels["st.tags"],
 				Version: s.Spec.Labels["st.version"],
