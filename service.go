@@ -40,7 +40,7 @@ type SW struct {
 
 type SwarmService struct {
 	Name            string                `json:",omitempty"`
-	ServiceNam      string                `json:",omitempty"`
+	ServiceName     string                `json:",omitempty"`
 	Domain          string                `json:",omitempty"`
 	Tags            string                `json:",omitempty"`
 	Version         string                `json:",omitempty"`
