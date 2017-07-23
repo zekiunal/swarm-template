@@ -15,7 +15,13 @@ import (
 
 	"strconv"
 	"sync"
+	"net/http"
+	"github.com/docker/go-connections/tlsconfig"
+	"path/filepath"
+	"errors"
 )
+
+var ErrRedirect = errors.New("unexpected redirect in response")
 
 type Service struct {
 	Host                 string
@@ -62,9 +68,30 @@ func NewServiceFromEnv(host string) *Service {
 	return NewService(host)
 }
 
-func NewService(host string) *Service {
+func NewService(host string) (*Service) {
+	var clients *http.Client
 
-	docker_client, err := client.NewClient(host, "v1.24", nil, map[string]string{"User-Agent":"engine-api-cli-1.0"})
+	if dockerCertPath := os.Getenv("DOCKER_CERT_PATH"); dockerCertPath != "" {
+		options := tlsconfig.Options{
+			CAFile:             filepath.Join(dockerCertPath, "ca.pem"),
+			CertFile:           filepath.Join(dockerCertPath, "cert.pem"),
+			KeyFile:            filepath.Join(dockerCertPath, "key.pem"),
+			InsecureSkipVerify: os.Getenv("DOCKER_TLS_VERIFY") == "",
+		}
+		tlsc, err := tlsconfig.Client(options)
+		if err != nil {
+			debug(err.Error())
+		}
+
+		clients = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsc,
+			},
+			CheckRedirect: CheckRedirect,
+		}
+	}
+
+	docker_client, err := client.NewClient(host, "v1.24", clients, map[string]string{"User-Agent":"engine-api-cli-1.0"})
 
 	if err != nil {
 		debug(err.Error())
@@ -76,6 +103,16 @@ func NewService(host string) *Service {
 		DockerClient:          docker_client,
 	}
 }
+
+
+func CheckRedirect(req *http.Request, via []*http.Request) error {
+	if via[0].Method == http.MethodGet {
+		return http.ErrUseLastResponse
+	}
+	return ErrRedirect
+}
+
+
 
 func (service *Service) GetServices() ([]SW, error) {
 
